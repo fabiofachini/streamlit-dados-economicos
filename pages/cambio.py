@@ -1,11 +1,10 @@
 import streamlit as st
 import pandas as pd
-from sqlalchemy import create_engine
+import pymssql
 import os
 import time
 from dotenv import load_dotenv
 import plotly.graph_objects as go
-import urllib
 
 # Configurações da página
 st.set_page_config(page_title="Taxas de Câmbio", layout="wide")
@@ -13,28 +12,22 @@ st.set_page_config(page_title="Taxas de Câmbio", layout="wide")
 # Atualize o caminho para o arquivo .env
 load_dotenv()
 
-# Função para conectar ao Azure SQL Database usando SQLAlchemy
+# Função para conectar ao Azure SQL Database
 def connect_to_db():
     retries = 5
     delay = 10  # segundos
     for i in range(retries):
         try:
-            # Carregar variáveis de ambiente
-            server = os.getenv("DB_SERVER")
-            database = os.getenv("DB_DATABASE")
-            username = os.getenv("DB_USERNAME")
-            password = os.getenv("DB_PASSWORD")
-
-            # Criar a string de conexão
-            params = urllib.parse.quote_plus(f"DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password}")
-            connection_string = f"mssql+pyodbc:///?odbc_connect={params}"
-
-            # Criar o engine de conexão
-            engine = create_engine(connection_string)
+            connection = pymssql.connect(
+                server=os.getenv("DB_SERVER"),
+                user=os.getenv("DB_USERNAME"),
+                password=os.getenv("DB_PASSWORD"),
+                database=os.getenv("DB_DATABASE")
+            )
             print("Conexão bem-sucedida")
-            return engine
-        except Exception as e:
-            print(f"Tentativa {i + 1} falhou: {e}")
+            return connection
+        except pymssql.DatabaseError as e:
+            print(f"Tentativa {i+1} falhou: {e}")
             if i < retries - 1:
                 print(f"Tentando novamente em {delay} segundos...")
                 time.sleep(delay)
@@ -44,10 +37,12 @@ def connect_to_db():
 # Função para obter dados de uma tabela específica
 @st.cache_data(ttl=85000)
 def get_data(table_name):
-    engine = connect_to_db()
+    conn = connect_to_db()
     query = f"SELECT * FROM {table_name}"
-    data = pd.read_sql(query, engine)
+    data = pd.read_sql(query, conn)
+    conn.close()
     return data
+
 
 # Função para carregar todos os dados e armazenar em cache
 @st.cache_data(ttl=85000)
